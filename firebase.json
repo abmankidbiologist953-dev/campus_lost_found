@@ -1,0 +1,38 @@
+{
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        ".env.*"
+      ]
+    }
+  ],
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "kasu-campus-lf-20261108-x7",
+          "appId": "1:140447906518:android:7eb23640e24ae8e38f6777",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "kasu-campus-lf-20261108-x7",
+          "configurations": {
+            "android": "1:140447906518:android:7eb23640e24ae8e38f6777",
+            "web": "1:140447906518:web:36aa93e48dab2f548f6777"
+          }
+        }
+      }
+    }
+  }
+}

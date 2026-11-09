@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "140447906518",
+    "project_id": "kasu-campus-lf-20261108-x7",
+    "storage_bucket": "kasu-campus-lf-20261108-x7.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:140447906518:android:7eb23640e24ae8e38f6777",
+        "android_client_info": {
+          "package_name": "com.example.campus_lost_found"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDJIwnDqBYs5Nfucaiz0qC6Hczq1D9uVDI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
