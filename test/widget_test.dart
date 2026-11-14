@@ -95,6 +95,20 @@ void main() {
               password_hash TEXT NOT NULL
             )
           ''');
+            await database.execute('''
+            CREATE TABLE campus_items (
+              id INTEGER PRIMARY KEY,
+              title TEXT NOT NULL,
+              description TEXT NOT NULL,
+              category TEXT NOT NULL,
+              location TEXT NOT NULL,
+              contact TEXT NOT NULL,
+              item_date INTEGER NOT NULL,
+              created_at INTEGER NOT NULL,
+              type TEXT NOT NULL,
+              returned INTEGER NOT NULL DEFAULT 0
+            )
+          ''');
             await database.insert('student_accounts', {
               'matric_number': matricNumber,
               'password_salt': 'c2FsdA==',
@@ -274,6 +288,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Report an Item'), findsOneWidget);
 
+    await tester.tap(find.byType(DropdownButtonFormField<String>).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Found').last);
+    await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextFormField).at(0), 'Lost keys');
     await tester.enterText(find.byType(TextFormField).at(1), 'Silver keys');
     await tester.enterText(find.byType(TextFormField).at(2), 'Main Library');
@@ -301,6 +319,50 @@ void main() {
     expect(find.text('Student Notebook'), findsNothing);
   });
 
+  testWidgets('lost item reports require a photo', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: ItemFormPage()));
+
+    await tester.enterText(find.byType(TextFormField).at(0), 'Lost keys');
+    await tester.enterText(find.byType(TextFormField).at(1), 'Silver keys');
+    await tester.enterText(find.byType(TextFormField).at(2), 'Main Library');
+    await tester.enterText(find.byType(TextFormField).at(3), '08012345678');
+    tester.testTextInput.hide();
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView), const Offset(0, -900));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Submit Report'));
+    await tester.tap(find.text('Submit Report'));
+    await tester.pump();
+
+    expect(
+      find.text('A photo is required for lost item reports.'),
+      findsOneWidget,
+    );
+    expect(find.text('Upload photo'), findsOneWidget);
+  });
+
+  test('item photo is persisted with the report', () async {
+    final now = DateTime.now();
+    final photo = Uint8List.fromList([0, 1, 2, 3, 4, 5]);
+    final item = CampusItem(
+      id: 5,
+      title: 'Lost keys',
+      description: 'Silver keys',
+      category: 'Keys',
+      location: 'Main Library',
+      contact: '08012345678',
+      date: now,
+      createdAt: now,
+      type: 'Lost',
+      photo: photo,
+    );
+
+    await CampusDatabase.saveItem(item);
+
+    final savedItems = await CampusDatabase.loadItems();
+    expect(savedItems.singleWhere((saved) => saved.id == item.id).photo, photo);
+  });
+
   testWidgets('student profile offers picture upload', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(
@@ -317,10 +379,10 @@ void main() {
   });
 
   test(
-    'reports expire only after they have been stored for seven days',
+    'reports expire only after they have been stored for fourteen days',
     () async {
       final now = DateTime.now();
-      final withinSevenDays = CampusItem(
+      final withinFourteenDays = CampusItem(
         id: 3,
         title: 'Recent report',
         description: 'Still within the retention period',
@@ -329,11 +391,11 @@ void main() {
         contact: '08000000003',
         date: now,
         createdAt: now
-            .subtract(const Duration(days: 7))
+            .subtract(const Duration(days: 14))
             .add(const Duration(seconds: 30)),
         type: 'Lost',
       );
-      final olderThanSevenDays = CampusItem(
+      final olderThanFourteenDays = CampusItem(
         id: 4,
         title: 'Expired report',
         description: 'Older than the retention period',
@@ -341,12 +403,12 @@ void main() {
         location: 'Library',
         contact: '08000000004',
         date: now,
-        createdAt: now.subtract(const Duration(days: 7, seconds: 1)),
+        createdAt: now.subtract(const Duration(days: 14, seconds: 1)),
         type: 'Lost',
       );
 
-      await CampusDatabase.saveItem(withinSevenDays);
-      await CampusDatabase.saveItem(olderThanSevenDays);
+      await CampusDatabase.saveItem(withinFourteenDays);
+      await CampusDatabase.saveItem(olderThanFourteenDays);
       final items = await CampusDatabase.loadItems();
 
       expect(items.any((item) => item.title == 'Recent report'), isTrue);

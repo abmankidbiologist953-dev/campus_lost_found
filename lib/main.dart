@@ -6,6 +6,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart' as sqflite_ffi;
 
@@ -1285,13 +1286,28 @@ class _HomePageState extends State<HomePage> {
                     ],
                   ),
                 ),
-                child: Icon(
-                  item.returned
-                      ? Icons.check_circle_outline
-                      : _iconForCategory(item.category),
-                  color: statusColor,
-                  size: 34,
-                ),
+                child: item.photo == null
+                    ? Icon(
+                        item.returned
+                            ? Icons.check_circle_outline
+                            : _iconForCategory(item.category),
+                        color: statusColor,
+                        size: 34,
+                      )
+                    : ClipRRect(
+                        borderRadius: BorderRadius.circular(18),
+                        child: Image.memory(
+                          item.photo!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Icon(
+                              _iconForCategory(item.category),
+                              color: statusColor,
+                              size: 34,
+                            );
+                          },
+                        ),
+                      ),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -2016,6 +2032,11 @@ class _ItemFormPageState extends State<ItemFormPage> {
   String category = 'Electronics';
   String type = 'Lost';
   DateTime selectedDate = DateTime.now();
+  Uint8List? itemPhoto;
+  bool isSelectingPhoto = false;
+  bool showPhotoError = false;
+
+  final ImagePicker imagePicker = ImagePicker();
 
   final List<String> categories = [
     'Electronics',
@@ -2044,6 +2065,91 @@ class _ItemFormPageState extends State<ItemFormPage> {
       category = item.category;
       type = item.type;
       selectedDate = item.date;
+      itemPhoto = item.photo;
+    }
+  }
+
+  bool get supportsCamera =>
+      kIsWeb ||
+      defaultTargetPlatform == TargetPlatform.android ||
+      defaultTargetPlatform == TargetPlatform.iOS;
+
+  void _showMessage(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
+  void _setItemPhoto(Uint8List bytes) {
+    if (bytes.isEmpty) {
+      _showMessage('Could not read the selected picture. Try another file.');
+      return;
+    }
+    if (bytes.lengthInBytes > CampusDatabase.maxItemPhotoBytes) {
+      _showMessage('Choose a picture smaller than 5 MB.');
+      return;
+    }
+
+    setState(() {
+      itemPhoto = bytes;
+      showPhotoError = false;
+    });
+  }
+
+  Future<void> choosePhotoFromCamera() async {
+    setState(() {
+      isSelectingPhoto = true;
+    });
+    try {
+      final image = await imagePicker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 85,
+        maxWidth: 1600,
+        maxHeight: 1600,
+      );
+      if (image != null) {
+        _setItemPhoto(await image.readAsBytes());
+      }
+    } on PlatformException catch (error, stackTrace) {
+      debugPrint('Could not capture item picture: $error\n$stackTrace');
+      _showMessage('Could not open the camera. Please try again.');
+    } finally {
+      if (mounted) {
+        setState(() {
+          isSelectingPhoto = false;
+        });
+      }
+    }
+  }
+
+  Future<void> choosePhotoFromFiles() async {
+    setState(() {
+      isSelectingPhoto = true;
+    });
+    try {
+      final selection = await FilePicker.pickFiles(type: FileType.image);
+      if (selection.isEmpty) {
+        return;
+      }
+      final selectedFile = selection.single;
+      final fileSize = await selectedFile.length();
+      if (fileSize != null && fileSize > CampusDatabase.maxItemPhotoBytes) {
+        _showMessage('Choose a picture smaller than 5 MB.');
+        return;
+      }
+
+      _setItemPhoto(await selectedFile.readAsBytes());
+    } on PlatformException catch (error, stackTrace) {
+      debugPrint('Could not select item picture: $error\n$stackTrace');
+      _showMessage('Could not open the picture picker. Please try again.');
+    } finally {
+      if (mounted) {
+        setState(() {
+          isSelectingPhoto = false;
+        });
+      }
     }
   }
 
@@ -2066,6 +2172,13 @@ class _ItemFormPageState extends State<ItemFormPage> {
     if (!formKey.currentState!.validate()) {
       return;
     }
+    if (type == 'Lost' && itemPhoto == null) {
+      setState(() {
+        showPhotoError = true;
+      });
+      _showMessage('Add a photo of the lost item before submitting.');
+      return;
+    }
 
     final oldItem = widget.item;
 
@@ -2080,6 +2193,7 @@ class _ItemFormPageState extends State<ItemFormPage> {
       createdAt: oldItem?.createdAt ?? DateTime.now(),
       type: type,
       returned: oldItem?.returned ?? false,
+      photo: itemPhoto,
     );
 
     Navigator.pop(context, item);
@@ -2118,6 +2232,9 @@ class _ItemFormPageState extends State<ItemFormPage> {
                 if (value != null) {
                   setState(() {
                     type = value;
+                    if (value != 'Lost') {
+                      showPhotoError = false;
+                    }
                   });
                 }
               },
@@ -2202,6 +2319,74 @@ class _ItemFormPageState extends State<ItemFormPage> {
               },
             ),
             const SizedBox(height: 16),
+            if (itemPhoto != null) ...[
+              Center(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.memory(
+                    itemPhoto!,
+                    height: 180,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return const SizedBox(
+                        height: 180,
+                        child: Center(
+                          child: Icon(Icons.broken_image_outlined, size: 40),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: isSelectingPhoto ? null : choosePhotoFromFiles,
+                  icon: const Icon(Icons.upload_outlined),
+                  label: Text(
+                    itemPhoto == null ? 'Upload photo' : 'Change photo',
+                  ),
+                ),
+                if (supportsCamera)
+                  OutlinedButton.icon(
+                    onPressed: isSelectingPhoto ? null : choosePhotoFromCamera,
+                    icon: const Icon(Icons.camera_alt_outlined),
+                    label: const Text('Take photo'),
+                  ),
+                if (itemPhoto != null)
+                  TextButton.icon(
+                    onPressed: isSelectingPhoto
+                        ? null
+                        : () {
+                            setState(() {
+                              itemPhoto = null;
+                            });
+                          },
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('Remove photo'),
+                  ),
+              ],
+            ),
+            if (showPhotoError && type == 'Lost')
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  'A photo is required for lost item reports.',
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ),
+            const SizedBox(height: 8),
+            Text(
+              'Add a clear photo of the item. A photo is required for lost '
+              'item reports.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 16),
             OutlinedButton.icon(
               onPressed: chooseDate,
               icon: const Icon(Icons.calendar_month),
@@ -2212,7 +2397,7 @@ class _ItemFormPageState extends State<ItemFormPage> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Reports are automatically removed after 7 days.',
+              'Reports are automatically removed after 14 days.',
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 24),

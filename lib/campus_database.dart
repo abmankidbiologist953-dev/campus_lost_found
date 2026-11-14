@@ -20,6 +20,7 @@ class CampusItem {
   DateTime createdAt;
   String type;
   bool returned;
+  final Uint8List? photo;
 
   CampusItem({
     required this.id,
@@ -32,6 +33,7 @@ class CampusItem {
     required this.createdAt,
     required this.type,
     this.returned = false,
+    this.photo,
   });
 
   factory CampusItem.fromMap(Map<String, Object?> map) {
@@ -46,6 +48,9 @@ class CampusItem {
       createdAt: DateTime.fromMillisecondsSinceEpoch(map['created_at']! as int),
       type: map['type']! as String,
       returned: (map['returned']! as int) == 1,
+      photo: map['item_photo'] == null
+          ? null
+          : Uint8List.fromList(List<int>.from(map['item_photo']! as List)),
     );
   }
 
@@ -61,6 +66,7 @@ class CampusItem {
       'created_at': createdAt.millisecondsSinceEpoch,
       'type': type,
       'returned': returned ? 1 : 0,
+      'item_photo': photo,
     };
   }
 }
@@ -70,6 +76,7 @@ class CampusDatabase {
 
   static const _databaseName = 'campus_lost_found.db';
   static const maxProfilePhotoBytes = 5 * 1024 * 1024;
+  static const maxItemPhotoBytes = 5 * 1024 * 1024;
   static const _passwordIterations = 120000;
   static Database? _database;
 
@@ -81,7 +88,7 @@ class CampusDatabase {
     final databasePath = join(await getDatabasesPath(), _databaseName);
     _database = await openDatabase(
       databasePath,
-      version: 3,
+      version: 4,
       onCreate: _createSchema,
       onUpgrade: (database, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -100,6 +107,11 @@ class CampusDatabase {
             INSERT OR IGNORE INTO student_profiles (matric_number, profile_photo)
             SELECT matric_number, profile_photo FROM student_accounts
           ''');
+        }
+        if (oldVersion < 4) {
+          await database.execute(
+            'ALTER TABLE campus_items ADD COLUMN item_photo BLOB',
+          );
         }
       },
     );
@@ -126,7 +138,8 @@ class CampusDatabase {
         item_date INTEGER NOT NULL,
         created_at INTEGER NOT NULL,
         type TEXT NOT NULL,
-        returned INTEGER NOT NULL DEFAULT 0
+        returned INTEGER NOT NULL DEFAULT 0,
+        item_photo BLOB
       )
     ''');
     await database.execute('''
@@ -312,7 +325,7 @@ class CampusDatabase {
   static Future<List<CampusItem>> loadItems() async {
     final database = await _instance;
     final expiryCutoff = DateTime.now()
-        .subtract(const Duration(days: 7))
+        .subtract(const Duration(days: 14))
         .millisecondsSinceEpoch;
     await database.delete(
       'campus_items',
@@ -327,6 +340,14 @@ class CampusDatabase {
   }
 
   static Future<void> saveItem(CampusItem item) async {
+    if (item.photo != null && item.photo!.lengthInBytes > maxItemPhotoBytes) {
+      throw ArgumentError.value(
+        item.photo!.lengthInBytes,
+        'photo',
+        'Item pictures must be 5 MB or smaller.',
+      );
+    }
+
     final database = await _instance;
     await database.insert(
       'campus_items',
